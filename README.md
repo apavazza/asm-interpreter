@@ -1,8 +1,9 @@
 # Assembly Interpreter
 
 [![Tests](https://github.com/apavazza/asm-interpreter/actions/workflows/tests.yml/badge.svg)](https://github.com/apavazza/asm-interpreter/actions/workflows/tests.yml)
-[![Build and Create Release](https://github.com/apavazza/asm-interpreter/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/apavazza/asm-interpreter/actions/workflows/build-and-release.yml)
-![Rust version](https://img.shields.io/badge/Rust-1.85.1-brightgreen.svg)
+[![Build](https://github.com/apavazza/asm-interpreter/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/apavazza/asm-interpreter/actions/workflows/build-and-release.yml)
+![Rust version](https://img.shields.io/badge/Rust-1.85+-dea584.svg)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 
 Assembly Interpreter is a simple interactive command-line tool built in Rust. It simulates basic assembly language operations for educational and testing purposes.
 
