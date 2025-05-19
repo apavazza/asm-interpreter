@@ -10,6 +10,8 @@ pub fn interactive(){
 pub fn run_with_reader<R: BufRead>(mut reader: R, interactive: bool) {
     // Initialize all registers to 0
     let mut registers = [0i32; NUM_REGISTERS];
+    // Initialize the CPSR carry flag (0 or 1)
+    let mut cpsr: u32 = 0;
 
     fn report_error(interactive: bool, msg: &str) {
         if interactive {
@@ -24,7 +26,9 @@ pub fn run_with_reader<R: BufRead>(mut reader: R, interactive: bool) {
         if reg.len() < 2 || !reg.to_lowercase().starts_with('r') {
             return None;
         }
-        reg[1..].parse::<usize>().ok().and_then(|idx| if idx < NUM_REGISTERS { Some(idx) } else { None })
+        reg[1..].parse::<usize>()
+            .ok()
+            .and_then(|idx| if idx < NUM_REGISTERS { Some(idx) } else { None })
     }
 
     // Helper function to parse a value
@@ -133,6 +137,66 @@ pub fn run_with_reader<R: BufRead>(mut reader: R, interactive: bool) {
                     report_error(interactive, "Invalid destination register. Use r0 through r15.");
                 }
             },
+            "ADC" => {
+                if parts.len() != 4 {
+                    report_error(interactive, "Usage: ADC <dest_register>, <reg_operand>, <operand>");
+                    continue;
+                }
+                if !parts[1].ends_with(',') || !parts[2].ends_with(',') {
+                    report_error(interactive, "Syntax error: Missing comma after register operands in ADC");
+                    continue;
+                }
+                let dest = parts[1].trim_end_matches(',');
+                if let Some(idx_dest) = parse_register(dest) {
+                    if let Some(idx_op1) = parse_register(parts[2].trim_end_matches(',')) {
+                        let op1_val = registers[idx_op1];
+                        if let Some(op2_val) = parse_value(parts[3], &registers) {
+                            // ADC: result = op1 + op2 + CPSR. Using overflowing add to update CPSR.
+                            let (sum, carry1) = (op1_val as u32).overflowing_add(op2_val as u32);
+                            let (result, carry2) = sum.overflowing_add(cpsr);
+                            registers[idx_dest] = result as i32;
+                            cpsr = if carry1 || carry2 { 1 } else { 0 };
+                        } else {
+                            report_error(interactive, "Invalid second operand for ADC. It must be an immediate (prefixed with '#') or a valid register.");
+                        }
+                    } else {
+                        report_error(interactive, "The first operand for ADC must be a register, not an immediate constant.");
+                    }
+                } else {
+                    report_error(interactive, "Invalid destination register in ADC. Use r0 through r15.");
+                }
+            },
+            "SBC" => {
+                if parts.len() != 4 {
+                    report_error(interactive, "Usage: SBC <dest_register>, <reg_operand>, <operand>");
+                    continue;
+                }
+                if !parts[1].ends_with(',') || !parts[2].ends_with(',') {
+                    report_error(interactive, "Syntax error: Missing comma after register operands in SBC");
+                    continue;
+                }
+                let dest = parts[1].trim_end_matches(',');
+                if let Some(idx_dest) = parse_register(dest) {
+                    if let Some(idx_op1) = parse_register(parts[2].trim_end_matches(',')) {
+                        let op1_val = registers[idx_op1];
+                        if let Some(op2_val) = parse_value(parts[3], &registers) {
+                            // SBC: result = op1 - op2 - (1 - CPSR)
+                            // Note: In ARM, carry means no borrow, so (1 - carry) is subtracted.
+                            let (diff1, borrow1) = (op1_val as u32).overflowing_sub(op2_val as u32);
+                            let subtrahend = 1 - cpsr;
+                            let (result, borrow2) = diff1.overflowing_sub(subtrahend);
+                            registers[idx_dest] = result as i32;
+                            cpsr = if borrow1 || borrow2 { 0 } else { 1 };
+                        } else {
+                            report_error(interactive, "Invalid second operand for SBC. It must be an immediate (prefixed with '#') or a valid register.");
+                        }
+                    } else {
+                        report_error(interactive, "The first operand for SBC must be a register, not an immediate constant.");
+                    }
+                } else {
+                    report_error(interactive, "Invalid destination register in SBC. Use r0 through r15.");
+                }
+            },
             "LSL" => {
                 if parts.len() != 4 {
                     report_error(interactive, "Usage: LSL <dest_register>, <source_register>, <shift_amount>");
@@ -234,6 +298,131 @@ pub fn run_with_reader<R: BufRead>(mut reader: R, interactive: bool) {
                     report_error(interactive, "Invalid register name. Use r0 through r15.");
                 }
             },
+            "MUL" => {
+                if parts.len() != 4 {
+                    report_error(interactive, "Usage: MUL <dest_register>, <reg_operand>, <operand>");
+                    continue;
+                }
+                if !parts[1].ends_with(',') || !parts[2].ends_with(',') {
+                    report_error(interactive, "Syntax error: Missing comma after register operands in MUL");
+                    continue;
+                }
+                let dest = parts[1].trim_end_matches(',');
+                if let Some(idx_dest) = parse_register(dest) {
+                    if let Some(idx_op1) = parse_register(parts[2].trim_end_matches(',')) {
+                        let op1_val = registers[idx_op1];
+                        if let Some(op2_val) = parse_value(parts[3], &registers) {
+                            registers[idx_dest] = op1_val * op2_val;
+                        } else {
+                            report_error(interactive, "Invalid second operand for MUL. It must be an immediate (prefixed with '#') or a valid register.");
+                        }
+                    } else {
+                        report_error(interactive, "The first operand for MUL must be a register, not an immediate constant.");
+                    }
+                } else {
+                    report_error(interactive, "Invalid destination register in MUL. Use r0 through r15.");
+                }
+            },
+            "AND" => {
+                if parts.len() != 4 {
+                    report_error(interactive, "Usage: AND <dest_register>, <reg_operand>, <operand>");
+                    continue;
+                }
+                if !parts[1].ends_with(',') || !parts[2].ends_with(',') {
+                    report_error(interactive, "Syntax error: Missing comma after register operands in AND");
+                    continue;
+                }
+                let dest = parts[1].trim_end_matches(',');
+                if let Some(idx_dest) = parse_register(dest) {
+                    if let Some(idx_op1) = parse_register(parts[2].trim_end_matches(',')) {
+                        let op1_val = registers[idx_op1];
+                        if let Some(op2_val) = parse_value(parts[3], &registers) {
+                            registers[idx_dest] = op1_val & op2_val;
+                        } else {
+                            report_error(interactive, "Invalid second operand for AND. It must be an immediate (prefixed with '#') or a valid register.");
+                        }
+                    } else {
+                        report_error(interactive, "The first operand for AND must be a register, not an immediate constant.");
+                    }
+                } else {
+                    report_error(interactive, "Invalid destination register in AND. Use r0 through r15.");
+                }
+            },
+            "ORR" => {
+                if parts.len() != 4 {
+                    report_error(interactive, "Usage: ORR <dest_register>, <reg_operand>, <operand>");
+                    continue;
+                }
+                if !parts[1].ends_with(',') || !parts[2].ends_with(',') {
+                    report_error(interactive, "Syntax error: Missing comma after register operands in ORR");
+                    continue;
+                }
+                let dest = parts[1].trim_end_matches(',');
+                if let Some(idx_dest) = parse_register(dest) {
+                    if let Some(idx_op1) = parse_register(parts[2].trim_end_matches(',')) {
+                        let op1_val = registers[idx_op1];
+                        if let Some(op2_val) = parse_value(parts[3], &registers) {
+                            registers[idx_dest] = op1_val | op2_val;
+                        } else {
+                            report_error(interactive, "Invalid second operand for ORR. It must be an immediate (prefixed with '#') or a valid register.");
+                        }
+                    } else {
+                        report_error(interactive, "The first operand for ORR must be a register, not an immediate constant.");
+                    }
+                } else {
+                    report_error(interactive, "Invalid destination register in ORR. Use r0 through r15.");
+                }
+            },
+            "BIC" => {
+                if parts.len() != 4 {
+                    report_error(interactive, "Usage: BIC <dest_register>, <reg_operand>, <operand>");
+                    continue;
+                }
+                if !parts[1].ends_with(',') || !parts[2].ends_with(',') {
+                    report_error(interactive, "Syntax error: Missing comma after register operands in BIC");
+                    continue;
+                }
+                let dest = parts[1].trim_end_matches(',');
+                if let Some(idx_dest) = parse_register(dest) {
+                    if let Some(idx_op1) = parse_register(parts[2].trim_end_matches(',')) {
+                        let op1_val = registers[idx_op1];
+                        if let Some(op2_val) = parse_value(parts[3], &registers) {
+                            registers[idx_dest] = op1_val & !op2_val;
+                        } else {
+                            report_error(interactive, "Invalid second operand for BIC. It must be an immediate (prefixed with '#') or a valid register.");
+                        }
+                    } else {
+                        report_error(interactive, "The first operand for BIC must be a register, not an immediate constant.");
+                    }
+                } else {
+                    report_error(interactive, "Invalid destination register in BIC. Use r0 through r15.");
+                }
+            },
+            "EOR" => {
+                if parts.len() != 4 {
+                    report_error(interactive, "Usage: EOR <dest_register>, <reg_operand>, <operand>");
+                    continue;
+                }
+                if !parts[1].ends_with(',') || !parts[2].ends_with(',') {
+                    report_error(interactive, "Syntax error: Missing comma after register operands in EOR");
+                    continue;
+                }
+                let dest = parts[1].trim_end_matches(',');
+                if let Some(idx_dest) = parse_register(dest) {
+                    if let Some(idx_op1) = parse_register(parts[2].trim_end_matches(',')) {
+                        let op1_val = registers[idx_op1];
+                        if let Some(op2_val) = parse_value(parts[3], &registers) {
+                            registers[idx_dest] = op1_val ^ op2_val;
+                        } else {
+                            report_error(interactive, "Invalid second operand for EOR. It must be an immediate (prefixed with '#') or a valid register.");
+                        }
+                    } else {
+                        report_error(interactive, "The first operand for EOR must be a register, not an immediate constant.");
+                    }
+                } else {
+                    report_error(interactive, "Invalid destination register in EOR. Use r0 through r15.");
+                }
+            },
             "PRINT" => {
                 if parts.len() != 2 {
                     report_error(interactive, "Usage: PRINT <register>");
@@ -286,6 +475,83 @@ mod tests {
             MOV r1, #20\n\
             MOV r2, #7\n\
             SUB r3, r1, r2\n\
+            PRINT r3\n\
+            EXIT\n";
+        run_test_script(script);
+    }
+
+    #[test]
+    fn test_adc_instruction() {
+        let script = "\
+            MOV r1, #5\n\
+            MOV r2, #10\n\
+            ADC r3, r1, r2\n\
+            PRINT r3\n\
+            EXIT\n";
+        run_test_script(script);
+    }
+
+    #[test]
+    fn test_sbc_instruction() {
+        let script = "\
+            MOV r1, #20\n\
+            MOV r2, #7\n\
+            SBC r3, r1, r2\n\
+            PRINT r3\n\
+            EXIT\n";
+        run_test_script(script);
+    }
+
+    #[test]
+    fn test_mul_instruction() {
+        let script = "\
+            MOV r1, #3\n\
+            MOV r2, #4\n\
+            MUL r3, r1, r2\n\
+            PRINT r3\n\
+            EXIT\n";
+        run_test_script(script);
+    }
+
+    #[test]
+    fn test_and_instruction() {
+        let script = "\
+            MOV r1, #12\n\
+            MOV r2, #10\n\
+            AND r3, r1, r2\n\
+            PRINT r3\n\
+            EXIT\n";
+        run_test_script(script);
+    }
+
+    #[test]
+    fn test_orr_instruction() {
+        let script = "\
+            MOV r1, #4\n\
+            MOV r2, #2\n\
+            ORR r3, r1, r2\n\
+            PRINT r3\n\
+            EXIT\n";
+        run_test_script(script);
+    }
+
+    #[test]
+    fn test_bic_instruction() {
+        let script = "\
+            MOV r1, #7\n\
+            MOV r2, #6\n\
+            BIC r3, r1, r2\n\
+            PRINT r3\n\
+            EXIT\n";
+        run_test_script(script);
+    }
+
+    #[test]
+    fn test_eor_instruction() {
+        let script = "\
+            MOV r1, #5\n\
+            MOV r2, #3\n\
+            EOR r3, r1, r2\n\
             PRINT r3\n\
             EXIT\n";
         run_test_script(script);
