@@ -19,16 +19,13 @@ fn main() -> std::io::Result<()> {
     
     let cli = cli::Cli::parse();
 
-    match cli.command {
-        cli::Commands::Run {} => {
-            println!("Welcome to the Assembly Interpreter.");
-            interpreter::interactive();
-        },
-        cli::Commands::Execute { input_file } => {
-            let file = File::open(&input_file)?;
-            let reader = BufReader::new(file);
-            interpreter::run_with_reader(reader, false);
-        }
+    if let Some(input_file) = cli.input_file {
+        let file = File::open(&input_file)?;
+        let reader = BufReader::new(file);
+        interpreter::run_with_reader(reader, false);
+    } else {
+        println!("Welcome to the Assembly Interpreter.");
+        interpreter::interactive();
     }
 
     Ok(())
